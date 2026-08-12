@@ -366,78 +366,35 @@ def normalize_mcp_data(raw_data: dict) -> dict:
 
 with st.sidebar:
     st.header("Company selection")
-    st.text_input("Search companies (type partial name or ticker)", key="search_text")
+    selected_company = st.selectbox(
+        "Choose a company",
+        sample_companies,
+        index=sample_companies.index(st.session_state.selected_ticker) if st.session_state.selected_ticker in sample_companies else 0,
+    )
+    if st.button("Confirm selection"):
+        st.session_state.selected_ticker = selected_company
+        st.session_state.company_input = selected_company
+        st.session_state.company_status = f"Loaded {selected_company}"
+        st.session_state.animation_id += 1
 
-    live_suggestions = search_screener_companies(st.session_state.search_text)
-    local_matches = [
-        company for company in sample_companies
-        if st.session_state.search_text.upper() in company
-    ]
-    suggestions = list(dict.fromkeys(live_suggestions + local_matches))
-    if not suggestions:
-        suggestions = sample_companies
+    st.caption("Select a company from the list and press Confirm to load details.")
 
-    st.caption("Suggestions update as you type. Live Screener.in ticker results are included when available.")
-    chosen_company = st.selectbox("Suggestions", suggestions, index=0)
-
-    st.button("Use selected suggestion", on_click=select_company, args=(chosen_company,))
-
-    st.markdown("---")
-    company_name = st.text_input("Screener.in ticker", key="company_input").strip().upper()
-
-    st.button("Use ticker", on_click=select_company, args=(company_name,))
-
-    st.button("Refresh dashboard", on_click=refresh_dashboard)
-
-    st.markdown("---")
-    st.header("Data source")
-    use_mcp = st.checkbox("Use local MCP server", value=False)
-    mcp_server_url = st.text_input("MCP server URL", "http://localhost:6274")
-    st.caption("Turn this on if your local MCP server is running.")
-    st.markdown("---")
-    use_manual = st.checkbox("Use manual overrides", value=False)
-    st.caption("Enable this only when you want to override live Screener values.")
-    st.markdown("---")
-    st.write("Sample ticker library:")
-    st.write(", ".join(sample_companies[:20]))
-
-mcp_data = None
-mcp_error = None
+company_name = st.session_state.selected_ticker
 live_data = {}
-live_source = "manual/sample"
-if use_mcp and company_name:
-    try:
-        response = requests.get(
-            f"{mcp_server_url}/mcp",
-            params={"symbol": company_name},
-            timeout=12,
-        )
-        response.raise_for_status()
-        mcp_data = response.json()
-        normalized = normalize_mcp_data(mcp_data)
-        if normalized:
-            live_data = normalized
-            live_source = "MCP"
-    except Exception as e:
-        mcp_error = str(e)
-
-if use_mcp:
-    st.sidebar.markdown("### MCP server status")
-    if mcp_data:
-        st.sidebar.success("Connected to MCP server")
-    else:
-        st.sidebar.error(f"Connection failed: {mcp_error}")
-
+live_source = "Screener.in scrape"
 scraped_data = {}
 sc_error = None
+# Defaults for simplified UI (no MCP/manual controls)
+use_mcp = False
+use_manual = False
+mcp_data = None
 if company_name:
     scraped_data, sc_error = fetch_screener_company_data(company_name)
     if scraped_data:
-        st.sidebar.success(f"Loaded live Screener.in data for {company_name}")
+        st.success(f"Loaded live Screener.in data for {company_name}")
         live_data = scraped_data
-        live_source = "Screener.in scrape"
     else:
-        st.sidebar.error("Live Screener.in data is unavailable for this ticker right now. No fallback data will be used.")
+        st.error("Live Screener.in data is unavailable for this ticker right now. No fallback data will be used.")
 
 metric_keys = [
     "revenue", "prior_revenue", "cogs", "operating_profit", "ebitda",
