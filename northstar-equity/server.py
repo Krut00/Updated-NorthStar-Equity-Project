@@ -110,6 +110,16 @@ def parse_screener(symbol, include_peers=True):
     text = parser.text
 
     price = number_after("Current Price", text)
+    if not price:
+        standalone_url = f"https://www.screener.in/company/{safe_symbol}/"
+        standalone_request = Request(standalone_url, headers={"User-Agent": "NorthStar Equity academic dashboard"})
+        with fetch_url(standalone_request, timeout=12) as response:
+            html = response.read().decode("utf-8", errors="replace")
+        parser = ScreenerParser()
+        parser.feed(html)
+        text = parser.text
+        url = standalone_url
+        price = number_after("Current Price", text)
     market_cap = number_after("Market Cap", text)
     pe = number_after("Stock P/E", text)
     roce = number_after("ROCE", text)
