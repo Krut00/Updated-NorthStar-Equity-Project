@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: northstar-equity
+    runtime: python
+    plan: free
+    rootDir: northstar-equity
+    buildCommand: ""
+    startCommand: "python3 server.py"
+    healthCheckPath: /api/health
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
