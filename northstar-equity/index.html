@@ -1056,9 +1056,9 @@
       document.getElementById("comparisonRows").innerHTML = '<tr><td colspan="4" class="peer-empty">Loading current Screener comparison...</td></tr>';
 
       try {
-        const response = await fetch(`/api/company?symbol=${encodeURIComponent(symbol)}`);
+        const response = await fetch(`/api/company?symbol=${encodeURIComponent(symbol)}&_=${Date.now()}`, { cache: "no-store" });
         const result = await response.json();
-        if (!response.ok || !result.ok) throw new Error(result.error || "Screener request failed");
+        if (!response.ok || !result.ok) throw new Error(result.error || `Screener request failed (HTTP ${response.status})`);
 
         const data = result.data;
         reportData.company = data.company || symbol;
@@ -1160,13 +1160,13 @@
         document.getElementById("ticker").textContent = "ERROR";
         document.getElementById("stockPrice").textContent = "Unavailable";
         document.getElementById("marketCap").textContent = "Unavailable";
-        document.getElementById("stockMeta").innerHTML = '<span class="negative">Screener fetch failed</span>';
+        document.getElementById("stockMeta").innerHTML = `<span class="negative">Live data error: ${escapeHtml(error.message)}</span>`;
         updateRequestedMetrics({ metrics: {}, workingCapital: {}, financialSeries: {} });
-        document.getElementById("peerGrid").innerHTML = '<div class="peer-empty">No live peers available because Screener could not be reached.</div>';
-        document.getElementById("comparisonRows").innerHTML = '<tr><td colspan="4" class="peer-empty">No comparison available without a current Screener response.</td></tr>';
+        document.getElementById("peerGrid").innerHTML = `<div class="peer-empty">No live peers available. ${escapeHtml(error.message)}</div>`;
+        document.getElementById("comparisonRows").innerHTML = `<tr><td colspan="4" class="peer-empty">No comparison available. ${escapeHtml(error.message)}</td></tr>`;
         document.getElementById("recommendationTitle").textContent = "No recommendation available";
         document.getElementById("recommendationText").textContent = "NorthStar Equity will not display an assessment until current Screener data is successfully fetched.";
-        statusText.textContent = "Unable to fetch live data from Screener";
+        statusText.textContent = `Unable to load live data: ${error.message}`;
         fetchTimestamp.textContent = `Retry attempted: ${fetchedAt}`;
         setReportStatus("Report could not be prepared", "error");
         console.error(error);
