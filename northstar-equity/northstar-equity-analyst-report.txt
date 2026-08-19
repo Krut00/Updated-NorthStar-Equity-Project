@@ -1,0 +1,145 @@
+NORTHSTAR EQUITY
+Find the Signal in the Noise
+
+EQUITY ANALYST REPORT
+Academic Project | Prepared from selected Screener-derived dashboard components
+
+============================================================
+1. EXECUTIVE INVESTMENT VIEW
+============================================================
+
+Company: Tata Consultancy Services
+Ticker: TCS.NSE
+Investment view: Moderate to strong long-term candidate
+Screening score: 72 / 100
+
+NorthStar Equity's component-based assessment indicates a financially resilient
+business with positive operating signals, balanced by valuation, macro, and
+execution risks.
+
+This report reviews the company using only the components selected for the
+NorthStar Equity dashboard: market snapshot, screening score, market
+capitalisation, operating and cash-generation signals, cash conversion cycle
+trend, positive investment factors, risk flags, and the final recommendation.
+
+============================================================
+2. MARKET SNAPSHOT
+============================================================
+
+Company:              Tata Consultancy Services
+Security:             TCS.NSE
+Reference price:      Rs 3,972.40
+Daily movement:       +2.84%
+Volume:               1.8M
+Market capitalisation: Rs 13.8T
+Screening score:      72 / 100
+Dashboard labels:     Stable, Cash Generative, Strong Growth
+
+============================================================
+3. SCREENING ASSESSMENT
+============================================================
+
+The dashboard screening score is 72 / 100. The associated signals are Stable,
+Cash Generative, and Strong Growth. This combination supports a constructive
+long-term view, while the score should be treated as an analytical aid rather
+than a standalone valuation model.
+
+============================================================
+4. OPERATING QUALITY AND CASH GENERATION
+============================================================
+
+The selected dashboard signals point to consistent revenue growth, operating
+leverage, healthy EBITDA and PAT margins, and positive operating cash generation.
+Together, these indicators suggest a resilient operating model capable of
+supporting reinvestment while limiting capital stress.
+
+Positive investment factors:
+
+1. Strong operational scale
+   Revenue growth remains consistent with strong operating leverage, showing
+   solid business execution across digital services.
+
+2. Healthy profitability
+   EBITDA and PAT margins remain healthy, suggesting a resilient business model
+   and efficient cost structure.
+
+3. Cash generation
+   Operating cash generation stays positive, supporting reinvestment and
+   reducing capital stress over time.
+
+============================================================
+5. WORKING CAPITAL: CASH CONVERSION CYCLE
+============================================================
+
+The cash conversion cycle is reviewed as a selected working-capital component.
+A lower CCC generally indicates that cash is tied up for fewer days in the
+operating cycle. The displayed series ends at 49 days in FY2024 versus 58 days
+in FY2020, indicating improvement over the period despite volatility in FY2022.
+
+Fiscal year       Cash conversion cycle
+------------------------------------------------------------
+FY2020            58 days
+FY2021            54 days
+FY2022            61 days
+FY2023            57 days
+FY2024            49 days
+
+============================================================
+6. KEY RISKS AND WARNINGS
+============================================================
+
+1. Valuation caution
+   Valuation appears elevated relative to short-term earnings growth, which
+   can limit upside if sentiment weakens.
+
+2. Macro sensitivity
+   Demand remains dependent on enterprise technology spending, which may be
+   affected by macroeconomic conditions.
+
+3. Execution risk
+   Large-scale clients and long billing cycles may create uneven revenue
+   recognition if execution slows.
+
+============================================================
+7. RECOMMENDATION AND MONITORING FRAMEWORK
+============================================================
+
+Moderate to strong long-term candidate.
+
+The displayed components point to strong earnings quality, healthy
+profitability, stable operating scale, and positive cash generation. Investors
+should monitor valuation, enterprise technology demand, client execution, and
+future changes in the cash conversion cycle before drawing a conclusion.
+
+============================================================
+8. DATA SCOPE AND METHODOLOGY
+============================================================
+
+This report is generated from the data components displayed in the NorthStar
+Equity dashboard:
+
+- Reference price
+- Daily movement
+- Trading volume
+- Market capitalisation
+- Screening score and labels
+- Cash conversion cycle history
+- Positive investment signals
+- Risk warnings
+- Investment recommendation
+- Data-fetch timestamp
+
+The current prototype uses dummy data to demonstrate the reporting workflow.
+A production implementation should fetch and validate current data through an
+authorised backend integration with Screener and preserve the source timestamp.
+
+============================================================
+DISCLAIMER
+============================================================
+
+This is an academic and educational project. It is not investment advice, a
+research recommendation, a solicitation, or a guarantee of future performance.
+It should not be used as the sole basis for making actual investment decisions.
+
+NorthStar Equity
+Find the Signal in the Noise
