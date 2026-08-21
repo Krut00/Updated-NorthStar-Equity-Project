@@ -721,10 +721,10 @@
       </div>
 
       <nav class="nav-links">
-        <a href="#">Dashboard</a>
-        <a href="#">Insights</a>
-        <a href="#">Research</a>
-        <a href="#">About</a>
+        <a href="#dashboard">Dashboard</a>
+        <a href="#insights">Insights</a>
+        <a href="#research">Research</a>
+        <a href="#about">About</a>
       </nav>
 
       <button class="report-btn" id="downloadReport" type="button">Download Equity Report</button>
@@ -733,7 +733,7 @@
 
   <main class="page">
     <div class="container">
-      <div class="topbar">
+      <div class="topbar" id="dashboard">
         <div class="title-block">
           <h1>Find the Signal<br>Inside the Noise</h1>
         </div>
@@ -821,7 +821,7 @@
 
       </section>
 
-      <section class="panel research-section">
+      <section class="panel research-section" id="research">
         <div class="panel-head"><div><div class="panel-title">Financial snapshot</div><div class="fetch-timestamp">Live key metrics from the selected Screener company</div></div><div class="tag">Fundamentals</div></div>
         <div class="snapshot-grid">
           <div class="snapshot-item"><label>Revenue growth</label><strong id="snapshotRevenueGrowth">Unavailable</strong></div>
@@ -928,7 +928,7 @@
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel" id="insights">
         <div class="panel-head">
           <div class="panel-title">Investment recommendation</div>
           <div class="tag">Final verdict</div>
@@ -961,7 +961,7 @@
         </div>
       </div>
 
-      <div class="disclaimer">
+      <div class="disclaimer" id="about">
         <h3>Disclaimer</h3>
         <p>
           This academic project by IIM Ranchi is intended for educational purposes only. Kindly do not use it to make financial
