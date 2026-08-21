@@ -1590,16 +1590,17 @@
         .replace(/<div class="source">[\s\S]*?<\/div>/, `<div class="source"><strong>Data provenance:</strong> This report is generated locally from the selected company's live Screener response at ${escapeHtml(fetchedAt)}. Peer comparisons use the peers returned by the same live response. Missing fields are shown as unavailable and are not estimated.</div>`)
         .replace("</article>", `${detailedAnalysis}${reportAppendix}<div class="report-footer"><span>NorthStar Equity | Find the Signal Inside the Noise</span><span>Academic Project • Not Financial Advice</span></div></article>`)
         .replace(/<div class="masthead">[\s\S]*?<h1>[\s\S]*?<\/h1>/, reportCover);
-      const printWindow = window.open("", "_blank");
-      if (!printWindow) {
-        throw new Error("The PDF window was blocked. Allow pop-ups and try again.");
-      }
-      printWindow.document.write(brandedReportHtml);
-      printWindow.document.close();
-      printWindow.addEventListener("load", () => {
-        printWindow.focus();
-        printWindow.print();
-      }, { once: true });
+      const blob = new Blob([brandedReportHtml], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const reportStamp = new Date().toISOString().replace(/[:.]/g, "-");
+      link.href = url;
+      link.download = `${reportData.company.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-equity-report-${reportStamp}.html`;
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     };
 
     document.getElementById("downloadReport").addEventListener("click", () => {
