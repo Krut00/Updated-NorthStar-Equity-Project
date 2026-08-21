@@ -273,15 +273,19 @@ def parse_screener(symbol, include_peers=True):
 
     peer_average = {}
     if peers:
+        def peer_mean(field):
+            values = [peer.get(field) for peer in peers if isinstance(peer.get(field), (int, float))]
+            return round(sum(values) / len(values), 2) if values else None
+
         peer_average = {
-            "price": round(sum(peer["price"] for peer in peers) / len(peers), 2),
-            "pe": round(sum(peer["pe"] for peer in peers) / len(peers), 2),
-            "marketCap": round(sum(peer["marketCap"] for peer in peers) / len(peers), 2),
-            "roce": round(sum(peer["roce"] for peer in peers) / len(peers), 2),
-            "revenueGrowth": round(sum(peer["revenueGrowth"] for peer in peers if peer.get("revenueGrowth") is not None) / max(1, len([peer for peer in peers if peer.get("revenueGrowth") is not None])), 2),
-            "operatingMargin": round(sum(peer["operatingMargin"] for peer in peers if peer.get("operatingMargin") is not None) / max(1, len([peer for peer in peers if peer.get("operatingMargin") is not None])), 2),
-            "roe": round(sum(peer["roe"] for peer in peers if peer.get("roe") is not None) / max(1, len([peer for peer in peers if peer.get("roe") is not None])), 2),
-            "debtEquity": round(sum(peer["debtEquity"] for peer in peers if peer.get("debtEquity") is not None) / max(1, len([peer for peer in peers if peer.get("debtEquity") is not None])), 2),
+            "price": peer_mean("price"),
+            "pe": peer_mean("pe"),
+            "marketCap": peer_mean("marketCap"),
+            "roce": peer_mean("roce"),
+            "revenueGrowth": peer_mean("revenueGrowth"),
+            "operatingMargin": peer_mean("operatingMargin"),
+            "roe": peer_mean("roe"),
+            "debtEquity": peer_mean("debtEquity"),
         }
 
     sector_links = re.findall(r'<a[^>]+href="/market/[^\"]+"[^>]*>(.*?)</a>', html, re.IGNORECASE | re.DOTALL)
