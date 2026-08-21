@@ -529,6 +529,7 @@
     }
 
     h1{ font-size:2.45rem; }
+    .title-block h1{ line-height:.95; }
     .subtitle, .muted, .fetch-timestamp, .stock-meta{ letter-spacing:-.01em; }
     .metric-value, .stock-price, .mini-value, .score-value{ font-variant-numeric:tabular-nums; }
 
@@ -734,8 +735,7 @@
     <div class="container">
       <div class="topbar">
         <div class="title-block">
-          <h1>Company Analyzer</h1>
-          <div class="subtitle">Find the Signal<br>Inside the Noise</div>
+          <h1>Find the Signal<br>Inside the Noise</h1>
         </div>
 
         <div class="search-shell">
@@ -1082,7 +1082,10 @@
         updateRequestedMetrics(data);
         updateLiveAssessment(data);
         setReportStatus("Report is ready to download", "ready");
-        document.getElementById("stockMeta").innerHTML = `<span class="${data.dailyMove.startsWith("-") ? "negative" : "delta-up"}">${escapeHtml(data.dailyMove)}</span> on ${escapeHtml(data.quoteDate)}`;
+        const quoteSummary = data.dailyMove !== "Unavailable" && data.quoteDate !== "Unavailable"
+          ? `<span class="${data.dailyMove.startsWith("-") ? "negative" : "delta-up"}">${escapeHtml(data.dailyMove)}</span> on ${escapeHtml(data.quoteDate)}`
+          : "Live daily movement unavailable from the current Screener response";
+        document.getElementById("stockMeta").innerHTML = quoteSummary;
         data.ccc.forEach((value, index) => {
           const position = index + 1;
           document.getElementById(`chartX${position}`).textContent = data.cccLabels[index] || `Period ${position}`;
@@ -1135,7 +1138,7 @@
             const rect = chartArea.getBoundingClientRect();
             const pointX = (x / 760) * rect.width;
             const pointY = (y / 260) * rect.height;
-            chartTooltip.innerHTML = `<strong>${escapeHtml(period)}</strong>${escapeHtml(value)}<br>Lower CCC generally means less cash tied up in operations.`;
+            chartTooltip.innerHTML = `<strong>${escapeHtml(period)}</strong>${escapeHtml(value)}`;
             chartTooltip.style.left = `${Math.min(Math.max(pointX - 60, 8), rect.width - 165)}px`;
             chartTooltip.style.top = `${Math.max(pointY - 76, 8)}px`;
             chartTooltip.style.display = "block";
