@@ -529,7 +529,16 @@
     }
 
     h1{ font-size:2.45rem; }
-    .title-block h1{ line-height:.95; }
+    .title-block h1{
+      line-height:.95;
+      animation:heading-float 4.8s ease-in-out infinite;
+      text-shadow:0 10px 24px rgba(75,156,229,.2);
+      will-change:transform;
+    }
+    @keyframes heading-float{
+      0%,100%{ transform:translateY(0); }
+      50%{ transform:translateY(-5px); }
+    }
     .subtitle, .muted, .fetch-timestamp, .stock-meta{ letter-spacing:-.01em; }
     .metric-value, .stock-price, .mini-value, .score-value{ font-variant-numeric:tabular-nums; }
 
