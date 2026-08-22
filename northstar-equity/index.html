@@ -756,7 +756,7 @@
 
         <div class="search-shell">
           <div class="search-box">
-            <input id="symbolInput" type="text" value="TCS" aria-label="Company symbol" autocomplete="off" />
+            <input id="symbolInput" type="text" value="ITC" aria-label="Company symbol" autocomplete="off" />
             <button class="search-btn" id="analyzeButton" type="button">Analyze</button>
           </div>
           <div class="search-suggestions" id="searchSuggestions" role="listbox"></div>
@@ -1067,7 +1067,7 @@
 
     const loadCompanyData = async (requestedSymbol) => {
       const symbolInput = document.getElementById("symbolInput");
-      const symbol = (requestedSymbol || symbolInput.value).trim().toUpperCase() || "TCS";
+      const symbol = (requestedSymbol || symbolInput.value).trim().toUpperCase() || "ITC";
       const companyName = document.getElementById("companyName");
       const ticker = document.getElementById("ticker");
       const stockPrice = document.getElementById("stockPrice");

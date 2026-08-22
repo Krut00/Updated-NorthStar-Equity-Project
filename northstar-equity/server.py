@@ -377,7 +377,7 @@ class NorthStarHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": str(error)}, status=502)
             return
         if parsed.path == "/api/company":
-            symbol = parse_qs(parsed.query).get("symbol", ["TCS"])[0]
+            symbol = parse_qs(parsed.query).get("symbol", ["ITC"])[0]
             try:
                 payload = {"ok": True, "data": parse_screener(symbol)}
                 self.send_json(payload)
@@ -401,5 +401,5 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8005"))
     host = os.environ.get("HOST", "127.0.0.1")
     print(f"NorthStar Equity running at http://localhost:{port}")
-    print("Screener proxy: /api/company?symbol=TCS")
+    print("Screener proxy: /api/company?symbol=ITC")
     ThreadingHTTPServer((host, port), NorthStarHandler).serve_forever()
