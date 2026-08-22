@@ -1201,11 +1201,11 @@
       const company = data.metrics || {};
       const average = data.peerAverage || {};
       const comparison = [
-        ["Revenue growth", formatNumber(company.revenueGrowth, "%"), formatNumber(average.revenueGrowth, "%"), company.revenueGrowth && average.revenueGrowth ? (company.revenueGrowth > average.revenueGrowth ? "Above average" : "Below average") : "Unavailable"],
-        ["Operating margin", formatNumber(company.operatingMargin, "%"), formatNumber(average.operatingMargin, "%"), company.operatingMargin && average.operatingMargin ? (company.operatingMargin > average.operatingMargin ? "Above average" : "Below average") : "Unavailable"],
-        ["ROE", formatNumber(company.roe, "%"), formatNumber(average.roe, "%"), company.roe && average.roe ? (company.roe > average.roe ? "Above average" : "Below average") : "Unavailable"],
-        ["ROCE", formatNumber(company.roce, "%"), formatNumber(average.roce, "%"), company.roce !== null && company.roce !== undefined && average.roce !== null && average.roce !== undefined ? (company.roce > average.roce ? "Above average" : "Below average") : "Unavailable"],
-        ["Debt / equity", formatNumber(company.debtEquity), formatNumber(average.debtEquity), company.debtEquity !== null && average.debtEquity !== null ? (company.debtEquity < average.debtEquity ? "Lower than average" : "Higher than average") : "Unavailable"]
+        ["Revenue growth", formatNumber(company.revenueGrowth, "%"), formatNumber(average.revenueGrowth, "%"), relativeSignal(company.revenueGrowth, average.revenueGrowth)],
+        ["Operating margin", formatNumber(company.operatingMargin, "%"), formatNumber(average.operatingMargin, "%"), relativeSignal(company.operatingMargin, average.operatingMargin)],
+        ["ROE", formatNumber(company.roe, "%"), formatNumber(average.roe, "%"), relativeSignal(company.roe, average.roe)],
+        ["ROCE", formatNumber(company.roce, "%"), formatNumber(average.roce, "%"), relativeSignal(company.roce, average.roce)],
+        ["Debt / equity", formatNumber(company.debtEquity), formatNumber(average.debtEquity), relativeSignal(company.debtEquity, average.debtEquity)]
       ];
       document.getElementById("comparisonCompany").textContent = data.company || data.symbol;
       document.getElementById("sectorLabel").textContent = `${data.sector || "Sector peer group"} · Average calculated from Screener peers`;
@@ -1286,21 +1286,36 @@
       const available = (value) => value !== null && value !== undefined && Number.isFinite(Number(value));
       const value = (metric) => available(metrics[metric]) ? Number(metrics[metric]) : null;
       const peer = (metric) => available(average[metric]) ? Number(average[metric]) : null;
-      const comparison = (metric, lowerIsBetter = false) => {
-        const current = value(metric);
-        const benchmark = peer(metric);
-        if (current === null || benchmark === null) return "Unavailable from the current Screener response.";
-        const direction = lowerIsBetter ? current <= benchmark : current >= benchmark;
-        return `${formatNumber(current, metric === "debtEquity" || metric === "pe" ? "" : "%")} versus peer average ${formatNumber(benchmark, metric === "debtEquity" || metric === "pe" ? "" : "%")}: ${direction ? "favourable" : "unfavourable"} relative position.`;
+      const parseDays = (item) => {
+        const parsed = Number.parseFloat(item);
+        return Number.isFinite(parsed) ? parsed : null;
       };
+      const cccValues = (data.ccc || []).map(parseDays).filter(available);
       const latest = (items) => items && items.length ? Number(items.at(-1)) : null;
       const first = (items) => items && items.length ? Number(items[0]) : null;
+      const comparison = (metric, suffix = "", lowerIsBetter = false) => {
+        const current = value(metric);
+        const benchmark = peer(metric);
+        if (current === null || benchmark === null) return "Peer comparison unavailable from the current Screener response.";
+        const tolerance = Math.max(Math.abs(benchmark) * 0.02, 0.01);
+        const relation = Math.abs(current - benchmark) <= tolerance ? "in line with peers" : (current < benchmark ? "below" : "above");
+        const direction = relation === "in line with peers" ? "in line with peers" : `${relation} peers`;
+        const context = relation === "in line with peers" ? "This is neither a relative advantage nor a relative disadvantage." : (lowerIsBetter ? (current < benchmark ? "This indicates lower relative exposure on this metric." : "This indicates higher relative exposure on this metric.") : (current > benchmark ? "This supports a stronger relative operating position." : "This indicates a relative area to improve."));
+        return `${formatNumber(current, suffix)} versus peer average ${formatNumber(benchmark, suffix)}: ${direction}. ${context}`;
+      };
       const trend = (items, label) => {
         const start = first(items);
         const end = latest(items);
         if (!available(start) || !available(end)) return `${label} trend is unavailable from the current Screener response.`;
         if (end === start) return `${label} is broadly unchanged across the displayed history.`;
-        return `${label} has ${end > start ? "increased" : "declined"} from ${formatNumber(start)} to ${formatNumber(end)} across the displayed history.`;
+        const change = ((end - start) / Math.abs(start)) * 100;
+        return `${label} moved from ${formatNumber(start)} to ${formatNumber(end)} across the displayed history, a ${change >= 0 ? "" : "-"}${Math.abs(change).toFixed(1)}% change.`;
+      };
+      const cumulativeGrowth = (items, label) => {
+        const start = first(items);
+        const end = latest(items);
+        if (!available(start) || !available(end) || start === 0) return `${label} cumulative change is unavailable.`;
+        return `${label} increased from ${formatNumber(start)} to ${formatNumber(end)}, approximately ${Math.abs(((end - start) / Math.abs(start)) * 100).toFixed(1)}% ${end >= start ? "cumulative growth" : "cumulative decline"} across the displayed period.`;
       };
       const strengths = [];
       const risks = [];
@@ -1312,43 +1327,45 @@
         if (current === null) return;
         possible += 1;
         const benchmark = peer(metric);
-        const favourable = lowerIsBetter ? (benchmark === null || current <= benchmark) : (benchmark === null || current >= benchmark);
-        if (favourable) points += 1;
-        const comparisonText = comparison(metric, lowerIsBetter);
-        const sentence = `${label} is ${formatNumber(current, metric === "debtEquity" || metric === "pe" ? "" : "%")}. ${comparisonText} ${interpretation}`;
-        (favourable ? strengths : risks).push(sentence);
+        const tolerance = benchmark === null ? 0 : Math.max(Math.abs(benchmark) * 0.02, 0.01);
+        const inLine = benchmark !== null && Math.abs(current - benchmark) <= tolerance;
+        const favourable = benchmark === null || (lowerIsBetter ? current < benchmark - tolerance : current > benchmark + tolerance);
+        if (favourable || inLine) points += 1;
+        const suffix = metric === "debtEquity" || metric === "pe" ? "" : "%";
+        const sentence = `${label} is ${formatNumber(current, suffix)}. ${comparison(metric, suffix, lowerIsBetter)} ${interpretation}`;
+        if (inLine || favourable) strengths.push(sentence); else risks.push(sentence);
       };
-      addMetric("revenueGrowth", "Revenue growth", "This supports or weakens the earnings-growth case, but the next reported period must confirm persistence.");
-      addMetric("operatingMargin", "Operating margin", "A stronger margin indicates better operating profitability and pricing or cost control.");
-      addMetric("roe", "Return on equity", "This measures the return generated on shareholder capital; unusually high values should still be checked for leverage effects.");
-      addMetric("roce", "Return on capital employed", "This measures how efficiently operating capital is being used to generate returns.");
-      addMetric("debtEquity", "Debt/equity", "Lower leverage generally leaves more resilience if earnings or cash flows weaken.", true);
-      addMetric("pe", "P/E", "A premium requires continued earnings delivery; a discount may represent value or a business concern that needs investigation.", true);
-      const ccc = latest(data.ccc || []);
-      if (available(ccc)) {
-        const cccStart = first(data.ccc || []);
-        const cccText = available(cccStart) && ccc !== cccStart
-          ? `Cash conversion cycle has ${ccc < cccStart ? "improved" : "worsened"} from ${formatNumber(cccStart, " days")} to ${formatNumber(ccc, " days")}.`
-          : `The latest cash conversion cycle is ${formatNumber(ccc, " days")}.`;
-        (ccc <= 60 ? strengths : risks).push(`${cccText} A lower cycle usually means less cash is tied up in operations.`);
-        if (ccc > 60) monitor.push("Wait for evidence that the cash conversion cycle is falling before assuming working-capital efficiency has improved.");
+      addMetric("revenueGrowth", "Revenue growth", "This is the main growth test and should be checked against future reported periods.");
+      addMetric("operatingMargin", "Operating margin", "This indicates the level of operating profitability and cost or pricing discipline.");
+      addMetric("roe", "Return on equity", "This measures the return generated on shareholder capital.");
+      addMetric("roce", "Return on capital employed", "This measures how efficiently operating capital is used to generate returns.");
+      addMetric("debtEquity", "Debt/equity", "In-line leverage is a neutral comparison, not a favourable signal by itself.", true);
+      addMetric("pe", "P/E", "A discount can be an opportunity or a signal of lower expected growth; the current data cannot establish which.", true);
+      const cccLatest = latest(cccValues);
+      const cccStart = first(cccValues);
+      if (available(cccLatest)) {
+        const cccTrend = available(cccStart) && cccLatest !== cccStart ? `CCC increased from ${formatNumber(cccStart, " days")} to ${formatNumber(cccLatest, " days")}, indicating moderate deterioration in cash efficiency.` : `The latest CCC is ${formatNumber(cccLatest, " days")}.`;
+        const componentNote = available(working.inventoryDays) && available(working.daysPayable) ? `The latest component data supports the calculation: debtor days ${formatNumber(working.debtorDays, " days")}, inventory days ${formatNumber(working.inventoryDays, " days")}, less days payable ${formatNumber(working.daysPayable, " days")}.` : "Inventory days and days payable are unavailable in the current Screener response, so the specific driver of the latest CCC cannot be determined.";
+        risks.push(`Working-capital efficiency: ${cccTrend} ${componentNote}`);
+        monitor.push(`Track whether CCC continues rising from ${formatNumber(cccLatest, " days")} and review debtor, inventory, and payable components when they become available.`);
       } else {
-        monitor.push("Cash conversion-cycle evidence is unavailable; review the next reported working-capital data before relying on cash-efficiency conclusions.");
+        monitor.push("Cash conversion-cycle evidence is unavailable from the current Screener response.");
       }
       const cashFlow = series.cashFlow || [];
       const cashFlowLatest = latest(cashFlow);
       if (available(cashFlowLatest)) {
-        const cashFlowStart = first(cashFlow);
-        const cashFlowText = available(cashFlowStart) && cashFlowLatest >= cashFlowStart ? "Operating cash flow has increased across the displayed history." : "Operating cash flow has declined across the displayed history.";
-        (cashFlowLatest >= 0 ? strengths : risks).push(`${cashFlowText} This is important because accounting profit is more useful to an investor when it is converted into operating cash.`);
-        if (cashFlowLatest < 0) monitor.push("Wait for operating cash flow to return to positive territory and reconcile it with reported profit.");
+        const cashFlowText = cumulativeGrowth(cashFlow, "Operating cash flow");
+        (cashFlowLatest >= 0 ? strengths : risks).push(`${cashFlowText} Cash conversion is an important cross-check on accounting earnings.`);
+        monitor.push(`Check that operating cash flow continues its current trajectory; latest displayed value is ${formatNumber(cashFlowLatest)}.`);
       } else {
-        monitor.push("Operating cash-flow history is unavailable; do not treat reported profitability as sufficient evidence of cash generation.");
+        monitor.push("Operating cash-flow history is unavailable; profitability cannot be fully cross-checked for cash conversion.");
       }
+      if (available(value("pe")) && available(peer("pe")) && value("pe") < peer("pe")) {
+        monitor.push(`Why is the stock priced below peers? P/E is ${formatNumber(value("pe"))} versus ${formatNumber(peer("pe"))}. Revenue growth is ${formatNumber(value("revenueGrowth"), "%")} versus ${formatNumber(peer("revenueGrowth"), "%")} for peers, so the discount may reflect lower growth expectations, but the current data does not prove that explanation.`);
+      }
+      if (available(value("revenueGrowth"))) monitor.push(`Growth: compare the next revenue-growth reading with the current ${formatNumber(value("revenueGrowth"), "%")} and peer average ${formatNumber(peer("revenueGrowth"), "%")}.`);
       const score = possible ? Math.round((points / possible) * 100) : 0;
-      const label = possible < 3 ? "Insufficient evidence for a reliable investment view" : score >= 70 ? "Favourable evidence, subject to valuation and execution checks" : score >= 45 ? "Mixed evidence; monitor before committing capital" : "Weak evidence; wait for measurable improvement";
-      if (value("pe") !== null && peer("pe") !== null && value("pe") > peer("pe")) monitor.push("The company trades above the live peer P/E average; require stronger growth or returns to justify paying the premium.");
-      if (value("revenueGrowth") !== null && value("operatingMargin") !== null && value("revenueGrowth") < 0) monitor.push("Revenue growth is negative; wait for a credible return to growth before treating profitability as durable.");
+      const label = possible < 3 ? "Insufficient evidence for a reliable investment view" : score >= 70 ? "Cautiously Positive" : score >= 45 ? "Mixed evidence; monitor before committing capital" : "Weak evidence; wait for measurable improvement";
       return {
         score: `${score} / 100`,
         label,
@@ -1356,19 +1373,17 @@
         risks,
         monitor,
         sections: [
-          ["Growth and earnings trajectory", `${trend(series.revenue, "Reported revenue")}${trend(series.ebitda, "Operating profit")}`],
-          ["Profitability and capital efficiency", `ROE ${formatNumber(metrics.roe, "%")}, ROCE ${formatNumber(metrics.roce, "%")}, and operating margin ${formatNumber(metrics.operatingMargin, "%")}. ${comparison("roe")}`],
-          ["Balance sheet and liquidity", `Debt/equity is ${formatNumber(metrics.debtEquity)}. ${comparison("debtEquity", true)} Debtor days are ${formatNumber(working.debtorDays, " days")}, inventory days are ${formatNumber(working.inventoryDays, " days")}, and days payable are ${formatNumber(working.daysPayable, " days")}.`],
-          ["Valuation and peer positioning", `P/E is ${formatNumber(metrics.pe)}. ${comparison("pe", true)} A lower multiple is not automatically attractive: it must be considered alongside growth, returns, cash generation, and business risks.`],
-          ["Investor decision framework", `Current conclusion: ${label}. Consider acting only when the favourable evidence is consistent with your time horizon and risk tolerance. Wait or build a watchlist position when the monitoring conditions remain unresolved: ${monitor.join(" ") || "continue reviewing the next reported period and source-linked statements."}`]
+          ["Growth and earnings trajectory", `${cumulativeGrowth(series.revenue, "Revenue")} ${cumulativeGrowth(series.ebitda, "Operating profit")} ${trend(series.revenue, "Revenue")}`],
+          ["Profitability and capital efficiency", `Operating margin ${formatNumber(metrics.operatingMargin, "%")}, ROE ${formatNumber(metrics.roe, "%")}, and ROCE ${formatNumber(metrics.roce, "%")}. ${comparison("operatingMargin", "%")} ${comparison("roe", "%")} ${comparison("roce", "%")}`],
+          ["Balance sheet and liquidity", `Debt/equity is ${formatNumber(metrics.debtEquity)}. ${comparison("debtEquity", "", true)} Debtor days are ${formatNumber(working.debtorDays, " days")}, inventory days are ${formatNumber(working.inventoryDays, " days")}, and days payable are ${formatNumber(working.daysPayable, " days")}.`],
+          ["Working capital and CCC", available(cccLatest) ? `CCC evidence is available: ${formatNumber(cccStart, " days")} to ${formatNumber(cccLatest, " days")} across the displayed period. ${available(working.inventoryDays) && available(working.daysPayable) ? "Component-level calculation is available." : "Component-level explanation is unavailable because inventory days and days payable are unavailable."}` : "CCC evidence is unavailable from the current Screener response."],
+          ["Valuation and peer positioning", `P/E is ${formatNumber(metrics.pe)} versus peer average ${formatNumber(average.pe)}. ${comparison("pe", "", true)} The current discount or premium must be interpreted alongside growth, returns, cash generation, and working-capital direction.`],
+          ["Investor decision framework", `NorthStar View: ${label}. The evidence profile is positive overall where profitability, capital efficiency, and cash generation are strong, but slower growth or working-capital deterioration can limit confidence. ${monitor.join(" ")}`]
         ]
       };
     };
 
     const updateLiveAssessment = (data) => {
-      const metrics = data.metrics || {};
-      const average = data.peerAverage || {};
-      const working = data.workingCapital || {};
       const assessment = buildDeterministicAssessment(data);
       reportData.score = assessment.score;
       reportData.scoreLabel = assessment.label;
@@ -1379,62 +1394,28 @@
       reportData.warnings = assessment.risks.length
         ? assessment.risks.map((text, index) => [`Risk point ${index + 1}`, text])
         : [["No material risk comparison", "No risk comparison can be established from the currently available Screener fields."]];
-      const cccLatest = Number.parseFloat((data.ccc || []).at(-1));
-      const available = (value) => value !== null && value !== undefined && Number.isFinite(Number(value));
-      const comparison = (value, peerValue) => available(value) && available(peerValue) ? Number(value) - Number(peerValue) : null;
-      const growthGap = comparison(metrics.revenueGrowth, average.revenueGrowth);
-      const marginGap = comparison(metrics.operatingMargin, average.operatingMargin);
-      const roeGap = comparison(metrics.roe, average.roe);
-      const roceGap = comparison(metrics.roce, average.roce);
-      const valuationGap = comparison(metrics.pe, average.pe);
-      const latestRevenue = data.financialSeries && data.financialSeries.revenue ? data.financialSeries.revenue.at(-1) : null;
-      const firstRevenue = data.financialSeries && data.financialSeries.revenue ? data.financialSeries.revenue[0] : null;
-      const latestCashFlow = data.financialSeries && data.financialSeries.cashFlow ? data.financialSeries.cashFlow.at(-1) : null;
-      const firstCashFlow = data.financialSeries && data.financialSeries.cashFlow ? data.financialSeries.cashFlow[0] : null;
-      const firstCcc = Number.parseFloat((data.ccc || [])[0]);
-      const revenueTrend = available(firstRevenue) && available(latestRevenue) ? (Number(latestRevenue) >= Number(firstRevenue) ? "reported revenue has increased across the displayed history" : "reported revenue has declined across the displayed history") : null;
-      const cashFlowTrend = available(firstCashFlow) && available(latestCashFlow) ? (Number(latestCashFlow) >= Number(firstCashFlow) ? "operating cash flow has increased across the displayed history" : "operating cash flow has declined across the displayed history") : null;
-      const strengths = [];
-      const risks = [];
-      const checks = [];
-      strengths.push(available(metrics.operatingMargin) ? `Operating margin is ${formatNumber(metrics.operatingMargin, "%")}${marginGap !== null ? `, ${marginGap >= 0 ? "above" : "below"} the live peer average by ${formatNumber(Math.abs(marginGap), "%")}` : ""}.` : "Operating margin is unavailable from the current Screener response.");
-      strengths.push(available(metrics.roce) || available(metrics.roe) ? `Returns are visible in the current response: ROCE ${formatNumber(metrics.roce, "%")} and ROE ${formatNumber(metrics.roe, "%")}${roceGap !== null ? `; ROCE is ${roceGap >= 0 ? "above" : "below"} the peer average` : ""}.` : "Return metrics are unavailable from the current Screener response.");
-      strengths.push(available(metrics.debtEquity) ? `Debt/equity is ${formatNumber(metrics.debtEquity)}, indicating ${metrics.debtEquity <= 1 ? "limited balance-sheet leverage on this metric" : "leverage that needs monitoring"}.` : cashFlowTrend ? `The displayed Screener history shows that ${cashFlowTrend}.` : "Balance-sheet and cash-flow evidence is unavailable from the current Screener response.");
-      const growthRisk = available(metrics.revenueGrowth) && growthGap !== null
-        ? growthGap < 0
-          ? `Revenue growth is ${formatNumber(metrics.revenueGrowth, "%")}, below the live peer average of ${formatNumber(average.revenueGrowth, "%")}; the company needs to justify its valuation through durable execution.`
-          : `Revenue growth is ${formatNumber(metrics.revenueGrowth, "%")}, above the live peer average of ${formatNumber(average.revenueGrowth, "%")}; confirm that this advantage is repeatable rather than a single-period effect.`
-        : "Revenue growth or its live peer comparison is unavailable from the current Screener response.";
-      const valuationRisk = available(metrics.pe) && valuationGap !== null
-        ? valuationGap > 0
-          ? `P/E is ${formatNumber(metrics.pe)}, above the live peer average of ${formatNumber(average.pe)}; the market may already be pricing in part of the operating strength.`
-          : `P/E is ${formatNumber(metrics.pe)}, below the live peer average of ${formatNumber(average.pe)}; confirm that the discount is not signalling a business or earnings concern absent from this snapshot.`
-        : "P/E or its live peer comparison is unavailable from the current Screener response.";
-      const cashRisk = available(cccLatest)
-        ? available(firstCcc) && cccLatest > firstCcc
-          ? `Cash conversion cycle has risen from ${formatNumber(firstCcc, " days")} to ${formatNumber(cccLatest, " days")} across the displayed history, so more operating cash is being tied up.`
-          : cccLatest > 60
-            ? `The latest cash conversion cycle is ${formatNumber(cccLatest, " days")}, so more operating cash is tied up than in a low-cycle business.`
-            : `The latest cash conversion cycle is ${formatNumber(cccLatest, " days")}; monitor the next period for a reversal even though the current level is not elevated.`
-        : "Cash conversion cycle is unavailable from the current Screener response.";
-      risks.push(growthRisk, valuationRisk, cashRisk);
-      if (available(metrics.pe) && valuationGap !== null && valuationGap > 0) checks.push("Decide whether the company can sustain its profitability and growth before paying the peer premium.");
-      if (available(cccLatest)) checks.push(`Track the next reported CCC after the current ${formatNumber(cccLatest, " days")} reading and compare its components for improvement or deterioration.`);
-      checks.push("Review the source-linked financial statements, business outlook, and your own time horizon and risk tolerance before any decision.");
-      const label = risks.length >= 2 ? "Strong business signals, but do not treat this as an automatic buy" : "Promising live signals; continue due diligence before deciding";
-      reportData.scoreLabel = label;
-      document.getElementById("recommendationTitle").textContent = label;
-      document.getElementById("recommendationText").textContent = `${data.company} has a mixed evidence profile. The current Screener response shows ${strengths.length} reason(s) for further attention and ${risks.length} caution(s). This dashboard can explain the evidence, but it cannot determine whether the company suits the customer's objectives.`;
+      const strengths = assessment.strengths;
+      const risks = assessment.risks;
+      const monitors = assessment.monitor;
+      document.getElementById("recommendationTitle").textContent = assessment.label;
+      document.getElementById("recommendationText").textContent = `${data.company} has an evidence profile built from live Screener values, peer comparisons, and displayed historical trends. The current conclusion is ${assessment.label.toLowerCase()}; review the evidence and monitoring conditions before making any decision.`;
       reportData.recommendationText = document.getElementById("recommendationText").textContent;
-      document.getElementById("recommendationPros").textContent = strengths.join(" ");
-      document.getElementById("recommendationCons").textContent = risks.join(" ");
-      document.getElementById("recommendationNext").textContent = checks.join(" ");
-      document.getElementById("positiveText1").textContent = strengths[0];
-      document.getElementById("positiveText2").textContent = strengths[1] || "A second positive signal is unavailable from the current Screener response.";
-      document.getElementById("positiveText3").textContent = strengths[2] || "Working-capital evidence is limited in the current Screener response.";
-      document.getElementById("warningText1").textContent = growthRisk;
-      document.getElementById("warningText2").textContent = valuationRisk;
-      document.getElementById("warningText3").textContent = cashRisk;
+      document.getElementById("recommendationPros").textContent = strengths.join(" ") || "No favourable evidence is available from the current Screener response.";
+      document.getElementById("recommendationCons").textContent = risks.join(" ") || "No quantified risk comparison is available from the current Screener response.";
+      document.getElementById("recommendationNext").textContent = monitors.join(" ") || "Review the next reported period and source-linked statements.";
+      document.getElementById("positiveText1").textContent = strengths[0] || "No favourable evidence is available from the current Screener response.";
+      document.getElementById("positiveText2").textContent = strengths[1] || "No second positive evidence point is available.";
+      document.getElementById("positiveText3").textContent = strengths[2] || "No third positive evidence point is available.";
+      document.getElementById("warningText1").textContent = risks[0] || "No quantified risk comparison is available.";
+      document.getElementById("warningText2").textContent = risks[1] || "No second quantified risk comparison is available.";
+      document.getElementById("warningText3").textContent = risks[2] || "No third quantified risk comparison is available.";
+    };
+
+    const relativeSignal = (companyValue, peerValue) => {
+      if (companyValue === null || companyValue === undefined || peerValue === null || peerValue === undefined || !Number.isFinite(Number(companyValue)) || !Number.isFinite(Number(peerValue))) return "Unavailable";
+      const tolerance = Math.max(Math.abs(Number(peerValue)) * 0.02, 0.01);
+      if (Math.abs(Number(companyValue) - Number(peerValue)) <= tolerance) return "In line with peers";
+      return Number(companyValue) > Number(peerValue) ? "Above average" : "Below average";
     };
 
     const renderSectorComparison = (data) => {
@@ -1442,11 +1423,11 @@
       const company = data.metrics || {};
       const average = data.peerAverage || {};
       const comparison = [
-        ["Revenue growth", formatNumber(company.revenueGrowth, "%"), formatNumber(average.revenueGrowth, "%"), company.revenueGrowth && average.revenueGrowth ? (company.revenueGrowth > average.revenueGrowth ? "Above average" : "Below average") : "Unavailable"],
-        ["Operating margin", formatNumber(company.operatingMargin, "%"), formatNumber(average.operatingMargin, "%"), company.operatingMargin && average.operatingMargin ? (company.operatingMargin > average.operatingMargin ? "Above average" : "Below average") : "Unavailable"],
-        ["ROE", formatNumber(company.roe, "%"), formatNumber(average.roe, "%"), company.roe && average.roe ? (company.roe > average.roe ? "Above average" : "Below average") : "Unavailable"],
-        ["ROCE", formatNumber(company.roce, "%"), formatNumber(average.roce, "%"), company.roce !== null && company.roce !== undefined && average.roce !== null && average.roce !== undefined ? (company.roce > average.roce ? "Above average" : "Below average") : "Unavailable"],
-        ["Debt / equity", formatNumber(company.debtEquity), formatNumber(average.debtEquity), company.debtEquity !== null && average.debtEquity !== null ? (company.debtEquity < average.debtEquity ? "Lower than average" : "Higher than average") : "Unavailable"]
+        ["Revenue growth", formatNumber(company.revenueGrowth, "%"), formatNumber(average.revenueGrowth, "%"), relativeSignal(company.revenueGrowth, average.revenueGrowth)],
+        ["Operating margin", formatNumber(company.operatingMargin, "%"), formatNumber(average.operatingMargin, "%"), relativeSignal(company.operatingMargin, average.operatingMargin)],
+        ["ROE", formatNumber(company.roe, "%"), formatNumber(average.roe, "%"), relativeSignal(company.roe, average.roe)],
+        ["ROCE", formatNumber(company.roce, "%"), formatNumber(average.roce, "%"), relativeSignal(company.roce, average.roce)],
+        ["Debt / equity", formatNumber(company.debtEquity), formatNumber(average.debtEquity), relativeSignal(company.debtEquity, average.debtEquity)]
       ];
       document.getElementById("comparisonCompany").textContent = data.company || data.symbol;
       document.getElementById("sectorLabel").textContent = `${data.sector || "Sector peer group"} · Average calculated from Screener peers`;
@@ -1516,7 +1497,15 @@
       if (!event.target.closest(".search-shell")) searchSuggestions.classList.remove("visible");
     });
 
-    const downloadReport = () => {
+    const downloadReport = async () => {
+      let reportLogoSource = "";
+      try {
+        const logoResponse = await fetch("North_Star_Freedom_Logo.svg", { cache: "no-store" });
+        const logoSvg = await logoResponse.text();
+        reportLogoSource = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(logoSvg)))}`;
+      } catch (error) {
+        reportLogoSource = "";
+      }
       const cccRows = reportData.ccc.map(([year, value]) => `<tr><td>${year}</td><td>${value}</td></tr>`).join("");
       const positiveSections = reportData.positives.map(([heading, body]) => `<h3>${escapeHtml(heading)}</h3><p>${escapeHtml(body)}</p>`).join("");
       const warningSections = reportData.warnings.map(([heading, body]) => `<h3>${escapeHtml(heading)}</h3><p>${escapeHtml(body)}</p>`).join("");
@@ -1528,7 +1517,7 @@
       const peerValue = (metric, suffix = "") => formatNumber((reportData.peerAverage || {})[metric], suffix);
       const reportMetric = (label, value, note) => `<div class="metric-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(note)}</small></div>`;
       const viewCards = `<div class="brief-grid"><section class="brief-card positive-card"><strong>What is working</strong>${(analysis.strengths || []).slice(0, 3).map((item) => `<p>${escapeHtml(item)}</p>`).join("") || "<p>No favourable evidence is available.</p>"}</section><section class="brief-card risk-card"><strong>What needs attention</strong>${(analysis.risks || []).slice(0, 3).map((item) => `<p>${escapeHtml(item)}</p>`).join("") || "<p>No quantified risk comparison is available.</p>"}</section><section class="brief-card monitor-card"><strong>What to monitor</strong>${(analysis.monitor || []).slice(0, 3).map((item) => `<p>${escapeHtml(item)}</p>`).join("") || "<p>Review the next reported period and source statements.</p>"}</section></div>`;
-      const reportCover = `<div class="report-brand"><img class="report-logo" src="${location.origin}/North_Star_Freedom_Logo.svg" alt="NorthStar Equity logo"><div><div class="report-kicker">NorthStar Equity</div><div class="motto">Find the Signal Inside the Noise</div></div></div><div class="report-subtitle">Equity Analyst Report</div><h1>${escapeHtml(reportData.company)}</h1><div class="meta">Ticker: ${escapeHtml(reportData.ticker)} · Sector: ${escapeHtml(reportData.sector)} · Data fetched: ${escapeHtml(fetchedAt)}</div><div class="cover-rule"></div><div class="view-label">NORTHSTAR VIEW</div><div class="view-title">${escapeHtml(reportData.scoreLabel)}</div><p class="view-summary">Evidence-based assessment prepared from the selected company's latest live Screener response.</p><div class="metric-grid">${reportMetric("Share price", reportData.price, "Current market quote")}${reportMetric("NorthStar score", reportData.score, "Evidence score / 100")}${reportMetric("Revenue growth", metricValue("revenueGrowth", "%"), "Reported growth metric")}${reportMetric("Operating margin", metricValue("operatingMargin", "%"), "Current reported margin")}${reportMetric("ROCE", metricValue("roce", "%"), "Capital efficiency")}${reportMetric("P/E", metricValue("pe"), "Relative valuation")}</div>${viewCards}`;
+      const reportCover = `<div class="report-brand">${reportLogoSource ? `<img class="report-logo" src="${reportLogoSource}" alt="NorthStar Equity logo">` : ""}<div><div class="report-kicker">NorthStar Equity</div><div class="motto">Find the Signal Inside the Noise</div></div></div><div class="report-subtitle">Equity Analyst Report</div><h1>${escapeHtml(reportData.company)}</h1><div class="meta">Ticker: ${escapeHtml(reportData.ticker)} · Sector: ${escapeHtml(reportData.sector)} · Data fetched: ${escapeHtml(fetchedAt)}</div><div class="cover-rule"></div><div class="view-label">NORTHSTAR VIEW</div><div class="view-title">${escapeHtml(reportData.scoreLabel)}</div><p class="view-summary">Evidence-based assessment prepared from the selected company's latest live Screener response.</p><div class="metric-grid">${reportMetric("Share price", reportData.price, "Current market quote")}${reportMetric("NorthStar score", reportData.score, "Evidence score / 100")}${reportMetric("Revenue growth", metricValue("revenueGrowth", "%"), "Reported growth metric")}${reportMetric("Operating margin", metricValue("operatingMargin", "%"), "Current reported margin")}${reportMetric("ROCE", metricValue("roce", "%"), "Capital efficiency")}${reportMetric("P/E", metricValue("pe"), "Relative valuation")}</div>${viewCards}`;
       const analysisSections = analysis.sections.map(([heading, body], index) => `<h2>${index + 3}. ${escapeHtml(heading)}</h2><p>${escapeHtml(body)}</p>`).join("");
       const monitoringSection = `<h2>${analysis.sections.length + 3}. Strengths, Risks, and Conditions to Monitor</h2><div class="positive">${positiveSections}</div><div class="risk">${warningSections}</div><h3>Conditions that may justify waiting</h3><ul>${(analysis.monitor.length ? analysis.monitor : ["Continue reviewing the next reported period and the source-linked statements before making a decision."]).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
       const trendText = (items, label) => {
@@ -1538,11 +1527,28 @@
         if (!Number.isFinite(start) || !Number.isFinite(end)) return `${label} trend is unavailable from the current response.`;
         return `${label} moved from ${formatNumber(start)} in the earliest displayed period to ${formatNumber(end)} in the latest displayed period, which is ${end >= start ? "an increase" : "a decline"}.`;
       };
-      const detailedAnalysis = `<h2>Detailed Investment Analysis</h2>
+      const cumulativeGrowth = (items, label) => {
+        if (!items || items.length < 2) return `${label} cumulative change is unavailable.`;
+        const start = Number(items[0]);
+        const end = Number(items.at(-1));
+        if (!Number.isFinite(start) || !Number.isFinite(end) || start === 0) return `${label} cumulative change is unavailable.`;
+        return `${label} moved from ${formatNumber(start)} to ${formatNumber(end)}, approximately ${Math.abs(((end - start) / Math.abs(start)) * 100).toFixed(1)}% ${end >= start ? "cumulative growth" : "cumulative decline"} across the displayed period.`;
+      };
+      const cccValues = (reportData.ccc || []).map((item) => Number.parseFloat(item[1])).filter(Number.isFinite);
+      const cccStart = cccValues[0];
+      const cccLatest = cccValues.at(-1);
+      const cccNarrative = Number.isFinite(cccLatest)
+        ? `${Number.isFinite(cccStart) && cccLatest !== cccStart ? `Working-capital efficiency: CCC increased from ${formatNumber(cccStart, " days")} to ${formatNumber(cccLatest, " days")}, indicating moderate deterioration in cash efficiency.` : `Working-capital efficiency: the latest CCC is ${formatNumber(cccLatest, " days")}.`} ${Number.isFinite(liveWorking.inventoryDays) && Number.isFinite(liveWorking.daysPayable) ? "The available components support a component-level explanation." : "Inventory days and days payable are unavailable in the current Screener response, so the specific driver of the change cannot be determined from the available data."}`
+        : "Working-capital efficiency: CCC evidence is unavailable from the current Screener response.";
+      const valuationQuestion = Number.isFinite(liveMetrics.pe) && Number.isFinite(reportData.peerAverage && reportData.peerAverage.pe) && liveMetrics.pe < reportData.peerAverage.pe
+        ? `Why does ${reportData.company} trade below the selected peer average? Its P/E is ${formatNumber(liveMetrics.pe)} versus ${formatNumber(reportData.peerAverage.pe)}, while revenue growth is ${formatNumber(liveMetrics.revenueGrowth, "%")} versus ${formatNumber(reportData.peerAverage.revenueGrowth, "%")} for peers. The discount may reflect lower growth expectations or an opportunity, but the current data cannot establish which.`
+        : "A peer-relative valuation discount is not established by the current Screener response.";
+      const viewChangeSection = `<h2>8. What Would Change Our View?</h2><div class="brief-grid"><section class="brief-card positive-card"><strong>View improves if</strong><p>Revenue growth moves closer to or above the peer average, operating profit continues to grow with revenue, operating cash flow remains positive, and CCC stabilises or falls.</p></section><section class="brief-card risk-card"><strong>View weakens if</strong><p>Revenue growth deteriorates further, operating profit stagnates, cash generation weakens, or CCC continues rising without component-level improvement.</p></section><section class="brief-card monitor-card"><strong>Next evidence</strong><p>Compare the next reported growth, profit, cash-flow, P/E, and CCC readings with this report's live snapshot.</p></section></div>`;
+      const detailedAnalysis = `<h2>3. Detailed Investment Analysis</h2>
         <h3>Method and evidence standard</h3>
         <p>This report uses the latest successful Screener response for ${escapeHtml(reportData.company)}. The framework compares the company's reported metrics with the live peer average where available, checks the direction of the displayed historical series, and separates favourable evidence from unresolved risk. It does not create forecasts, price targets, or business claims that are not present in the supplied data.</p>
         <h3>Earnings growth and operating momentum</h3>
-        <p>${escapeHtml(trendText(liveSeries.revenue, "Reported revenue"))} ${escapeHtml(trendText(liveSeries.ebitda, "Operating profit"))} The current reported revenue-growth metric is ${escapeHtml(metricValue("revenueGrowth", "%"))}. Growth is investable only when it is repeatable and supported by margins and cash generation; a single strong period should not be treated as a durable trend.</p>
+        <p>${escapeHtml(cumulativeGrowth(liveSeries.revenue, "Revenue"))} ${escapeHtml(cumulativeGrowth(liveSeries.ebitda, "Operating profit"))} ${escapeHtml(cumulativeGrowth(liveSeries.cashFlow, "Operating cash flow"))} The current reported revenue-growth metric is ${escapeHtml(metricValue("revenueGrowth", "%"))}. When cash flow grows at least as quickly as operating profit, it provides stronger support for earnings quality. Growth is investable only when it remains repeatable.</p>
         <h3>Profitability and shareholder returns</h3>
         <table><tr><th>Measure</th><th>Company</th><th>Peer average</th><th>Interpretation</th></tr><tr><td>Operating margin</td><td>${escapeHtml(metricValue("operatingMargin", "%"))}</td><td>${escapeHtml(peerValue("operatingMargin", "%"))}</td><td>Operating profitability and cost/pricing discipline</td></tr><tr><td>ROE</td><td>${escapeHtml(metricValue("roe", "%"))}</td><td>${escapeHtml(peerValue("roe", "%"))}</td><td>Return generated on shareholder capital</td></tr><tr><td>ROCE</td><td>${escapeHtml(metricValue("roce", "%"))}</td><td>${escapeHtml(peerValue("roce", "%"))}</td><td>Efficiency of operating capital</td></tr></table>
         <p>The returns case is strongest when ROE and ROCE remain healthy without excessive leverage. Investors should reconcile reported returns with debt/equity and cash flow before concluding that high returns represent durable competitive strength.</p>
@@ -1550,11 +1556,11 @@
         <p>Debt/equity is ${escapeHtml(metricValue("debtEquity"))}, against a peer average of ${escapeHtml(peerValue("debtEquity"))}. Lower leverage generally reduces refinancing and earnings sensitivity during a downturn, while higher leverage requires stronger and more predictable cash generation. This report therefore treats leverage as a risk-control variable rather than as a standalone reason to invest.</p>
         <h3>Working capital and cash conversion</h3>
         <table><tr><th>Working-capital measure</th><th>Latest reported value</th><th>Why it matters</th></tr><tr><td>Debtor days</td><td>${escapeHtml(formatNumber(liveWorking.debtorDays, " days"))}</td><td>Collection speed and credit discipline</td></tr><tr><td>Inventory days</td><td>${escapeHtml(formatNumber(liveWorking.inventoryDays, " days"))}</td><td>Cash tied up in stock</td></tr><tr><td>Days payable</td><td>${escapeHtml(formatNumber(liveWorking.daysPayable, " days"))}</td><td>Supplier-credit support for liquidity</td></tr><tr><td>Cash conversion cycle</td><td>${escapeHtml(formatNumber(liveWorking.cashConversionCycle, " days"))}</td><td>Time cash remains tied up in operations</td></tr></table>
-        <p>A rising cash conversion cycle can absorb cash even when the income statement looks healthy. The investor should compare the next reported CCC with this snapshot and investigate whether changes come from receivables, inventory, or supplier terms.</p>
+        <p>${escapeHtml(cccNarrative)} Compare the next reported CCC with this snapshot and investigate whether changes come from receivables, inventory, or supplier terms.</p>
         <h3>Cash-flow quality</h3>
         <p>${escapeHtml(trendText(liveSeries.cashFlow, "Operating cash flow"))} Operating cash flow is a key cross-check on accounting earnings: persistent positive cash flow improves the quality of reported profit, while weak or negative cash conversion increases the need for caution. ${escapeHtml((liveSeries.cashFlow || []).length ? `The displayed operating cash-flow observations are ${(liveSeries.cashFlow || []).map((item) => formatNumber(item)).join(", ")}.` : "No operating cash-flow history was returned." )}</p>
         <h3>Valuation and peer-relative pricing</h3>
-        <p>The company's P/E is ${escapeHtml(metricValue("pe"))}, compared with a live peer average of ${escapeHtml(peerValue("pe"))}. A premium is acceptable only when growth, margins, returns, and cash conversion provide enough evidence to justify it. A discount may offer opportunity, but it can also signal weaker growth, lower quality, or higher risk. Valuation should therefore be interpreted together with the operating evidence above.</p>
+        <p>The company's P/E is ${escapeHtml(metricValue("pe"))}, compared with a live peer average of ${escapeHtml(peerValue("pe"))}. A premium is acceptable only when growth, margins, returns, and cash conversion provide enough evidence to justify it. A discount may offer opportunity, but it can also signal weaker growth, lower quality, or higher risk. Valuation should therefore be interpreted together with the operating evidence above.</p><p><strong>Valuation question:</strong> ${escapeHtml(valuationQuestion)}</p>
         <h3>Investment thesis</h3>
         <ul>${(analysis.strengths || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("") || "<li>No favourable evidence was sufficient to form a positive thesis.</li>"}</ul>
         <h3>Principal risks</h3>
@@ -1562,7 +1568,7 @@
         <h3>When an investor should wait</h3>
         <ul>${(analysis.monitor || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("") || "<li>Wait for the next reported period if the investor cannot independently verify the current financial evidence.</li>"}</ul>
         <h3>Decision framework</h3>
-        <p>The calculated evidence score is ${escapeHtml(reportData.score)} and the resulting view is <strong>${escapeHtml(reportData.scoreLabel)}</strong>. This is not a buy or sell instruction. A research decision should require: (1) the positive operating evidence to persist, (2) valuation to remain proportionate to growth and returns, (3) cash flow to support reported earnings, and (4) no deterioration in leverage or working capital. If those conditions are not met, the rational action is to monitor rather than assume improvement.</p>`;
+        <p>The calculated evidence score is ${escapeHtml(reportData.score)} and the resulting view is <strong>${escapeHtml(reportData.scoreLabel)}</strong>. This is not a buy or sell instruction. A research decision should require: (1) the positive operating evidence to persist, (2) valuation to remain proportionate to growth and returns, (3) cash flow to support reported earnings, and (4) no deterioration in leverage or working capital. If those conditions are not met, the rational action is to monitor rather than assume improvement.</p>${viewChangeSection}`;
       const peerRows = (reportData.peers || []).map((peer) => `<tr><td>${escapeHtml(peer.name)}</td><td>${escapeHtml(peer.symbol)}</td><td>${escapeHtml(formatNumber(peer.pe))}</td><td>${escapeHtml(formatNumber(peer.roce, "%"))}</td><td>${escapeHtml(formatNumber(peer.marketCap))}</td></tr>`).join("");
       const reportChart = (title, values, labels) => {
         if (!values || !values.length) return `<section class="chart-block"><h3>${escapeHtml(title)}</h3><p>Not available in the current Screener response.</p></section>`;
@@ -1572,23 +1578,28 @@
         return `<section class="chart-block"><h3>${escapeHtml(title)}</h3><div class="report-chart">${bars}</div></section>`;
       };
       const reportAppendix = `<h2>Live Financial Snapshot</h2><table><tr><th>Metric</th><th>Current value</th></tr><tr><td>Revenue growth</td><td>${escapeHtml(formatNumber(liveMetrics.revenueGrowth, "%"))}</td></tr><tr><td>Operating margin</td><td>${escapeHtml(formatNumber(liveMetrics.operatingMargin, "%"))}</td></tr><tr><td>ROE</td><td>${escapeHtml(formatNumber(liveMetrics.roe, "%"))}</td></tr><tr><td>Debt / equity</td><td>${escapeHtml(formatNumber(liveMetrics.debtEquity))}</td></tr><tr><td>Debtor days</td><td>${escapeHtml(formatNumber(liveWorking.debtorDays, " days"))}</td></tr><tr><td>Inventory days</td><td>${escapeHtml(formatNumber(liveWorking.inventoryDays, " days"))}</td></tr><tr><td>Days payable</td><td>${escapeHtml(formatNumber(liveWorking.daysPayable, " days"))}</td></tr><tr><td>Cash conversion cycle</td><td>${escapeHtml(formatNumber(liveWorking.cashConversionCycle, " days"))}</td></tr></table><h2>Live Peer Comparison</h2><table><tr><th>Peer</th><th>Symbol</th><th>P/E</th><th>ROCE</th><th>Market cap</th></tr>${peerRows || "<tr><td colspan=\"5\">No live peers returned.</td></tr>"}</table><h2>Historical Reported Trends</h2>${reportChart("Revenue trend", liveSeries.revenue, liveSeries.labels)}${reportChart("Operating profit trend", liveSeries.ebitda, liveSeries.labels)}${reportChart("Operating cash-flow trend", liveSeries.cashFlow, liveSeries.cashFlowLabels || liveSeries.labels)}${reportChart("Cash conversion cycle", (reportData.ccc || []).map((item) => parseFloat(item[1])), (reportData.ccc || []).map((item) => item[0]))}`;
+      const numberedAppendix = reportAppendix.replace("<h2>Live Financial Snapshot</h2>", "<h2>10. Financial Appendix</h2>");
       const reportCss = `<style>@page{size:A4;margin:18mm 16mm 19mm}*{box-sizing:border-box}body{margin:0;background:#f4f7fb;color:#20364f;font:14px/1.65 Georgia,serif}.sheet{width:min(900px,100%);margin:0 auto;background:#fff;padding:48px 56px;box-shadow:0 16px 50px rgba(16,37,64,.1)}.masthead{border-bottom:3px solid #102540;padding-bottom:18px;margin-bottom:28px}.brand{font:800 22px/1.2 Arial,sans-serif;color:#102540;letter-spacing:.03em}.motto{font:italic 13px Arial,sans-serif;color:#5d7287;margin-top:5px}.eyebrow,.report-kicker,.view-label{font:700 11px Arial,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#2c5fe6}.report-brand{display:flex;align-items:center;gap:12px;margin-bottom:18px}.report-logo{width:42px;height:42px;object-fit:contain;padding:4px;background:#fff;border:1px solid #dfe7f1;border-radius:8px}.report-subtitle{font:800 32px/1.1 Arial,sans-serif;color:#102540;margin-top:9px}.cover-rule{height:4px;background:#102540;margin:22px 0 26px}.view-label{color:#177f61}.view-title{font:800 25px/1.2 Arial,sans-serif;color:#102540;margin:7px 0}.view-summary{font-size:16px;margin:0 0 22px;color:#40566d}.metric-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:20px 0 26px}.metric-card{border:1px solid #dfe7f1;border-top:3px solid #2c5fe6;padding:13px 14px;background:#fbfcfe;break-inside:avoid}.metric-card span,.metric-card small{display:block;font:10px Arial,sans-serif;color:#5d7287;text-transform:uppercase;letter-spacing:.08em}.metric-card strong{display:block;font:800 21px Arial,sans-serif;color:#102540;margin:5px 0}.metric-card small{text-transform:none;letter-spacing:0;font-size:11px}.brief-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:22px 0 30px}.brief-card{padding:15px;border:1px solid #dfe7f1;border-top:4px solid #2c5fe6;break-inside:avoid}.brief-card strong{font:800 14px Arial,sans-serif;color:#102540}.brief-card p{font-size:12px;margin:9px 0;color:#40566d}.positive-card{border-top-color:#177f61;background:#f4fbf8}.risk-card{border-top-color:#a84747;background:#fff8f8}.monitor-card{border-top-color:#2c5fe6;background:#f5f8ff}.chart-block{break-inside:avoid;margin:18px 0 24px}.report-chart{height:150px;display:flex;align-items:end;gap:10px;padding:12px 8px 0;border-bottom:1px solid #dfe7f1;background:linear-gradient(to top,#f5f8ff,#fff)}.report-bar-wrap{height:100%;flex:1;display:flex;flex-direction:column;justify-content:end;align-items:center;gap:5px;min-width:0}.report-bar{display:block;width:100%;max-width:34px;min-height:3px;background:#2c5fe6;border-radius:5px 5px 1px 1px}.report-bar-wrap strong{font:700 10px Arial,sans-serif;color:#102540;white-space:nowrap}.report-bar-wrap small{font:10px Arial,sans-serif;color:#5d7287;white-space:nowrap}h1,h2,h3{font-family:Arial,sans-serif;color:#102540}h1{font-size:38px;line-height:1.1;margin:10px 0}h2{font-size:20px;border-bottom:1px solid #dfe7f1;padding-bottom:8px;margin:30px 0 12px;break-after:avoid}h3{font-size:15px;margin:18px 0 4px;break-after:avoid}p{margin:7px 0;color:#40566d}table{width:100%;border-collapse:collapse;font:12px/1.45 Arial,sans-serif;break-inside:avoid}td,th{text-align:left;border-bottom:1px solid #dfe7f1;padding:9px}th{color:#5d7287;font-size:10px;text-transform:uppercase;letter-spacing:.08em}.positive h3{color:#177f61}.risk{background:#fff8f8;border:1px solid #f2d7d7;padding:2px 16px 12px}.risk h3{color:#a84747}.source{font:11px/1.5 Arial,sans-serif;color:#5d7287;background:#f7f9fc;padding:13px;margin-top:28px}.disclaimer{border-top:2px solid #102540;padding-top:14px;font:11px/1.5 Arial,sans-serif;color:#40566d;margin-top:28px}ul{color:#40566d;padding-left:20px}li{margin:6px 0;break-inside:avoid}.report-footer{border-top:1px solid #dfe7f1;margin-top:34px;padding-top:10px;display:flex;justify-content:space-between;font:10px Arial,sans-serif;color:#5d7287}@media(max-width:700px){.sheet{padding:28px 22px}.metric-grid,.brief-grid{grid-template-columns:1fr 1fr}}@media print{body{background:#fff}.sheet{width:100%;padding:0;box-shadow:none}.metric-card,.brief-card{background:#fff}.report-footer{position:fixed;bottom:0;left:0;right:0}}</style>`;
       const reportHtml = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Equity Analyst Report | ${escapeHtml(reportData.company)}</title>${reportCss}
         :root{--navy:#102540;--blue:#2c5fe6;--muted:#5d7287;--line:#dfe7f1;--green:#177f61;--red:#a84747}*{box-sizing:border-box}body{margin:0;background:#f4f7fb;color:#20364f;font:15px/1.65 Georgia,serif}.sheet{width:min(900px,92%);margin:40px auto;background:#fff;padding:58px 68px;box-shadow:0 16px 50px rgba(16,37,64,.1)}.masthead{border-bottom:3px solid var(--navy);padding-bottom:20px;margin-bottom:30px;display:flex;justify-content:space-between;gap:20px}.brand{font:800 22px/1.2 Arial,sans-serif;color:var(--navy);letter-spacing:.03em}.motto{font:italic 13px Arial,sans-serif;color:var(--muted);margin-top:6px}.eyebrow{font:700 11px Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;color:var(--blue)}h1,h2,h3{font-family:Arial,sans-serif;color:var(--navy)}h1{font-size:38px;line-height:1.1;letter-spacing:-.04em;margin:12px 0}h2{font-size:20px;border-bottom:1px solid var(--line);padding-bottom:9px;margin:32px 0 14px}h3{font-size:15px;margin:18px 0 3px}p{margin:7px 0;color:#40566d}.meta{font:13px Arial,sans-serif;color:var(--muted)}.callout{padding:18px 20px;background:#edf4ff;border-left:4px solid var(--blue);margin:18px 0}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:18px 0}.stat{border:1px solid var(--line);padding:14px}.stat label{display:block;font:10px Arial,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}.stat strong{display:block;color:var(--navy);font:800 22px Arial,sans-serif;margin-top:5px}table{width:100%;border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px}td,th{text-align:left;border-bottom:1px solid var(--line);padding:10px}th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em}.positive h3{color:var(--green)}.risk{background:#fff6f6;border:1px solid #f2d7d7;padding:2px 16px 12px}.risk h3{color:var(--red)}.source{font:12px/1.5 Arial,sans-serif;color:var(--muted);background:#f7f9fc;padding:13px;margin-top:28px}.disclaimer{border-top:2px solid var(--navy);margin-top:32px;padding-top:17px;font:12px/1.5 Arial,sans-serif;color:var(--muted)}@media print{body{background:#fff}.sheet{width:100%;margin:0;box-shadow:none;padding:20px}.download-hint{display:none}}@media(max-width:650px){.sheet{padding:30px 24px}.grid{grid-template-columns:1fr}h1{font-size:30px}}
       </style></head><body><article class="sheet"><div class="masthead"><div><div class="brand">NorthStar Equity</div><div class="motto">Find the Signal in the Noise</div></div><div class="meta">Equity Research | Academic Project</div></div><div class="eyebrow">Equity Analyst Report</div><h1>${escapeHtml(reportData.company)}</h1><div class="meta">Ticker: ${escapeHtml(reportData.ticker)} · Prepared from selected Screener-derived dashboard components · Data fetched: ${escapeHtml(fetchedAt)}</div><div class="callout"><strong>Investment view: ${escapeHtml(reportData.scoreLabel)}</strong><br>NorthStar Equity's component-based assessment indicates a financially resilient business with positive operating signals, balanced by valuation, macro, and execution risks.</div><h2>1. Executive Investment View</h2><p>This report presents a structured review of ${escapeHtml(reportData.company)} using only the components selected for the NorthStar Equity dashboard: market snapshot, screening score, market capitalisation, cash and profitability signals, cash conversion cycle trend, positive investment factors, risk flags, and the final recommendation.</p><div class="grid"><div class="stat"><label>Share price</label><strong>${escapeHtml(reportData.price)}</strong></div><div class="stat"><label>Screening score</label><strong>${escapeHtml(reportData.score)}</strong></div><div class="stat"><label>Market cap</label><strong>${escapeHtml(reportData.marketCap)}</strong></div></div><h2>2. Market Snapshot</h2><table><tr><th>Component</th><th>Observed dashboard data</th></tr><tr><td>Company</td><td>${escapeHtml(reportData.company)}</td></tr><tr><td>Security</td><td>${escapeHtml(reportData.ticker)}</td></tr><tr><td>Share price</td><td>${escapeHtml(reportData.price)}</td></tr><tr><td>Daily movement</td><td>${escapeHtml(reportData.dailyMove)}</td></tr><tr><td>Volume</td><td>${escapeHtml(reportData.volume)}</td></tr><tr><td>Market capitalisation</td><td>${escapeHtml(reportData.marketCap)}</td></tr></table><h2>3. Screening Assessment</h2><p>The dashboard screening score is <strong>${escapeHtml(reportData.score)}</strong>. The associated signals are Stable, Cash Generative, and Strong Growth. This combination supports a constructive long-term view, while the score should be treated as an analytical aid rather than a standalone valuation model.</p><h2>4. Working Capital and CCC Analysis</h2><p>The cash conversion cycle is reviewed as a selected working-capital component. A lower CCC generally indicates that cash is tied up for fewer days in the operating cycle. The displayed series ends at 49 days in FY2024 versus 58 days in FY2020, indicating improvement over the period despite volatility in FY2022.</p><table><tr><th>Financial year</th><th>Cash conversion cycle</th></tr>${cccRows}</table><h2>5. Positive Investment Factors</h2><div class="positive">${positiveSections}</div><h2>6. Key Risks and Warnings</h2><div class="risk">${warningSections}</div><h2>7. Recommendation and Monitoring Framework</h2><p><strong>Moderate to strong long-term candidate.</strong> The displayed components point to strong earnings quality, healthy profitability, stable operating scale, and positive cash generation. Investors should monitor valuation, enterprise technology demand, client execution, and future changes in the cash conversion cycle before drawing a conclusion.</p><div class="source"><strong>Data provenance:</strong> This prototype report is generated from the data components displayed in the NorthStar Equity dashboard. The current page uses dummy data to demonstrate the reporting workflow. A production implementation should fetch and validate current data through an authorised backend integration with Screener.</div><div class="disclaimer"><strong>Important disclaimer:</strong> This is an academic and educational project. It is not investment advice, a research recommendation, a solicitation, or a guarantee of future performance. It should not be used as the sole basis for making actual investment decisions.</div></article></body></html>`;
-      const cleanReportHtml = reportHtml.replace(/<\/style>[\s\S]*?<\/style><\/head>/, "</style></head>");
+      const cleanReportHtml = reportHtml.replace(/<\/style>[\s\S]*?<\/style><\/head>/, "</style></head>")
+        .replace(/NorthStar Equity's component-based assessment indicates a financially resilient business with positive operating signals, balanced by valuation, macro, and execution risks\./g, "The current view reflects measured profitability, capital efficiency, cash generation, relative growth, valuation, and working-capital evidence.")
+        .replace(/The associated signals are Stable, Cash Generative, and Strong Growth\./g, "The evidence profile is built from the current company's measured financial data and live peer comparisons.")
+        .replace(/The displayed series ends at 49 days in FY2024 versus 58 days in FY2020, indicating improvement over the period despite volatility in FY2022\./g, "CCC interpretation is based only on the displayed live history and available components.")
+        .replace(/The current page uses dummy data to demonstrate the reporting workflow\. A production implementation should fetch and validate current data through an authorised backend integration with Screener\./g, "This report is generated locally from a successful live Screener fetch.");
       const brandedReportHtml = cleanReportHtml
         .replace("Find the Signal in the Noise", "Find the Signal<br>Inside the Noise")
+        .replace(/NorthStar Equity's component-based assessment indicates a financially resilient business with positive operating signals, balanced by valuation, macro, and execution risks\./, "The current view reflects measured profitability, capital efficiency, cash generation, relative growth, valuation, and working-capital evidence.")
         .replace("This is an academic and educational project.", "This is an academic project by IIM Ranchi. Kindly do not use it to make financial decisions.")
         .replace("The current page uses dummy data to demonstrate the reporting workflow.", "This report is generated only after a successful live Screener fetch.")
         .replace("Moderate to strong long-term candidate.", escapeHtml(reportData.recommendationText || "Recommendation unavailable from the current live response."))
         .replace(/<tr><td>Volume<\/td><td>.*?<\/td><\/tr>/g, "")
         .replace(/<h2>3\. Screening Assessment<\/h2>[\s\S]*?(?=<h2>4\. Working Capital)/, "")
         .replace(/<p>The cash conversion cycle is reviewed[\s\S]*?<\/p>/, "")
-        .replace(/<h2>5\. Positive Investment Factors<\/h2>[\s\S]*?(?=<h2>7\. Recommendation)/, `${analysisSections}${monitoringSection}`)
-        .replace("<h2>7. Recommendation and Monitoring Framework</h2>", `<h2>${analysis.sections.length + 4}. Recommendation and Monitoring Framework</h2>`)
+        .replace(/<h2>5\. Positive Investment Factors<\/h2>[\s\S]*?(?=<div class="source">)/, `${detailedAnalysis}${monitoringSection}`)
         .replace(/<div class="source">[\s\S]*?<\/div>/, `<div class="source"><strong>Data provenance:</strong> This report is generated locally from the selected company's live Screener response at ${escapeHtml(fetchedAt)}. Peer comparisons use the peers returned by the same live response. Missing fields are shown as unavailable and are not estimated.</div>`)
-        .replace("</article>", `${detailedAnalysis}${reportAppendix}<div class="report-footer"><span>NorthStar Equity | Find the Signal Inside the Noise</span><span>Academic Project • Not Financial Advice</span></div></article>`)
+        .replace("</article>", `${numberedAppendix}<div class="report-footer"><span>NorthStar Equity | Find the Signal Inside the Noise</span><span>Academic Project • Not Financial Advice</span></div></article>`)
         .replace(/<div class="masthead">[\s\S]*?<h1>[\s\S]*?<\/h1>/, reportCover);
       const blob = new Blob([brandedReportHtml], { type: "text/html;charset=utf-8" });
       const url = URL.createObjectURL(blob);
